@@ -16,7 +16,7 @@
 //NS_EXTENSION_UNAVAILABLE_IOS("don't use it in extension")
 @protocol JHCSSearchable <NSObject>
 
-@required
+@optional
 /**
  *  @brief  需要实现这三个方法
  *
@@ -32,12 +32,8 @@
 
 - (NSString *)contentDescription;
 
-@optional
 
 + (NSString *)searchableContentType ;
-
-
-
 
 - (NSString *)searchableIdentifier;
 

@@ -10,6 +10,7 @@
 #import "objc/runtime.h"
 
 @interface NSString  (serialize)@end
+
 @implementation NSString (serialize)
 + (NSString *)serializeString:(NSString *)baseString params:(NSDictionary *)params {
     
@@ -29,7 +30,6 @@
         
         NSString *escaped_value = [params objectForKey:key];
         escaped_value  = [escaped_value stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet characterSetWithCharactersInString:@"!*'();:@&=+$,/?%#[]"]];
-    
 
         [pairs addObject:[NSString stringWithFormat:@"%@=%@", key, escaped_value]];
         
@@ -41,28 +41,30 @@
 
 @end
 
-@interface NSObject ()
 
-@property (nonatomic ,copy, readonly)  NSString *searchableContentType;
-
-@end
+static NSString *bundleIdentifier;
 
 @implementation NSObject (YBCSSearchable)
 
 static NSString *classContentType;
+
 - (NSString *)searchableContentType {
-    
-    if (!classContentType) {
-        
-        classContentType = [[[self class] searchableContentType] copy];
-    }
-    
-    return classContentType;
+
+    return [[self class] searchableContentType];
 }
 
 + (NSString *)searchableContentType {
 
-    return [NSString stringWithFormat:@"%@/%@",[[NSBundle mainBundle] bundleIdentifier],NSStringFromClass([self class])];
+    if (bundleIdentifier == nil) {
+
+        bundleIdentifier = [[NSBundle mainBundle] bundleIdentifier];
+    }
+
+    if (!classContentType) {
+
+        classContentType = [NSString stringWithFormat:@"%@/%@",bundleIdentifier,NSStringFromClass([self class])];
+    }
+    return classContentType;
 }
 
 + (NSString *)titleProperty {
@@ -71,25 +73,28 @@ static NSString *classContentType;
 }
 
 - (NSString *)searchableTitle {
-    
+
     if ([[self class] titleProperty]) {
-        
+
         unsigned int count = 0;
         objc_property_t *propertyList = class_copyPropertyList([self class], &count);
-        
+
         if (count) {
             for (int i = 0 ; i < count ;i ++) {
-                
+
                 NSString *strName = [NSString  stringWithCString:property_getName(propertyList[i]) encoding:NSUTF8StringEncoding];
-                
+
                 if ([strName isEqualToString:[[self class] titleProperty]]) {
-                    
+
+                    free(propertyList);
                     return [self valueForKey:strName];
                 }
             }
-            
-            
+
+
         }
+
+        free(propertyList);
 
     }
     
@@ -97,75 +102,46 @@ static NSString *classContentType;
 }
 
 + (NSString *)identifierPropterty {
-    
+
     return nil;
 }
 
 + (NSArray *)identifierProptertyArray {
-    
-    return nil;
+
+    return [self identifierPropterty] ?@[[self identifierPropterty]]:@[];
 }
-
 - (NSString *)searchableIdentifier {
-        
+
     NSArray* pkArray = [[self class] identifierProptertyArray];
-    if(pkArray.count == 0) {
-        
-        if ([[self class] identifierPropterty]) {
-            
-            unsigned int count = 0;
-            objc_property_t *propertyList = class_copyPropertyList([self class], &count);
-            
-            if (count) {
-                
-                NSMutableDictionary *dic = [NSMutableDictionary dictionaryWithCapacity:1];
-                for (int i = 0 ; i < count ;i ++) {
-                    
-                    NSString *strName = [NSString  stringWithCString:property_getName(propertyList[i]) encoding:NSUTF8StringEncoding];
-                    
-                    if ([strName isEqualToString:[[self class] identifierPropterty]]) {
-                        
-                        id value = [self valueForKey:strName];
-                        
-                        [dic setObject:[NSString stringWithFormat:@"%@",value ? :@""] forKey:strName];
-                        
-                        break;
-
-                    }
-                }
-                
-                return [NSString serializeString:[self searchableContentType] params:dic ];
-            }
-        }
-
-    } else {
-        
+    if(pkArray.count != 0) {
         unsigned int count = 0;
         objc_property_t *propertyList = class_copyPropertyList([self class], &count);
-        
+
         if (count) {
-            
+
             NSMutableDictionary *dic = [NSMutableDictionary dictionary];
             for (NSString *key in  pkArray) {
-                
+
                 for (int i = 0 ; i < count ;i ++) {
-                    
+
                     NSString *strName = [NSString  stringWithCString:property_getName(propertyList[i]) encoding:NSUTF8StringEncoding];
-                    
+
                     if ([strName isEqualToString:key]) {
-                        
+
                         [dic setObject:[self valueForKey:strName] ?[NSString stringWithFormat:@"%@",[self valueForKey:strName]]:@"" forKey:strName];
                         break;
                     }
                 }
             }
-            return [NSString serializeString:[self searchableContentType] params:dic ];
+            free(propertyList);
+            return [NSString serializeString:[self searchableContentType] params:dic];
+
         } else {
-            
+
         }
-        
+        free(propertyList);
     }
-    
+
     return nil;
 }
 
@@ -227,33 +203,40 @@ static NSString *classContentType;
 }
 
 + (CSSearchableItem *)genrate:(id <JHCSSearchable >)obj {
-    
-    NSAssert([obj conformsToProtocol:@protocol(JHCSSearchable)], @"OBJ doesm't conform protocol YBSearchable");
-    
-    CSSearchableItemAttributeSet *attributeSet = [[CSSearchableItemAttributeSet alloc] initWithItemContentType:[obj searchableContentType]];
-    
+
+    NSAssert([obj conformsToProtocol:@protocol(JHCSSearchable)], @"OBJ doesm't conform protocol JHSearchable");
+
+    CSSearchableItemAttributeSet *attributeSet = [[CSSearchableItemAttributeSet alloc] initWithItemContentType:[[obj class] searchableContentType]];
+
     attributeSet.title = obj.searchableTitle;
     attributeSet.subject = obj.searchableTitle;
-    
+
+    //    attributeSet.contentDescription = [NSString stringWithFormat:<#(nonnull NSString *), ...#>
     if ([obj respondsToSelector:@selector(contentDescription)]) {
-        
+
         NSString *string = [obj contentDescription];
         attributeSet.contentDescription = string;
-        
+
         NSArray *array = [string componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-        
+
         attributeSet.alternateNames = array;
-        
+
     }
-    attributeSet.contentModificationDate = [NSDate date];
-//    attributeSet.contentModificationDate
-    
+    //    attributeSet.addedDate = [NSDate date];
+    attributeSet.downloadedDate = [NSDate date];
+    //    attributeSet.
+    attributeSet.metadataModificationDate = [NSDate date];
+    attributeSet.contentModificationDate  = [NSDate date];
+    //attributeSet.contentCreationDate  = [NSDate date];
+
     NSArray *keyWords = [obj.searchableTitle componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+
     attributeSet.keywords = keyWords;
+
     attributeSet.relatedUniqueIdentifier = obj.searchableIdentifier;
-    
-    CSSearchableItem *item = [[CSSearchableItem alloc] initWithUniqueIdentifier:attributeSet.relatedUniqueIdentifier domainIdentifier:[obj searchableContentType] attributeSet:attributeSet];
-    
+
+    CSSearchableItem *item = [[CSSearchableItem alloc] initWithUniqueIdentifier:attributeSet.relatedUniqueIdentifier domainIdentifier:[[NSBundle mainBundle] bundleIdentifier] attributeSet:attributeSet];
+
     return item;
 }
 
